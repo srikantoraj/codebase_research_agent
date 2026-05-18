@@ -1,6 +1,19 @@
-bind = "127.0.0.1:8000"
+bind = "unix:/run/gunicorn/gunicorn.sock"
+
 workers = 3
-timeout = 120
-accesslog = "logs/gunicorn-access.log"
-errorlog = "logs/gunicorn-error.log"
+
+timeout = 300
+
+keepalive = 5
+
+worker_class = "sync"
+
+max_requests = 1000
+
+max_requests_jitter = 100
+
+accesslog = "-"
+
+errorlog = "-"
+
 loglevel = "info"

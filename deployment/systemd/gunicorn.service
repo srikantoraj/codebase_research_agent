@@ -3,11 +3,18 @@ Description=Gunicorn for Codebase Research Agent
 After=network.target
 
 [Service]
-User=www-data
+User=ubuntu
 Group=www-data
-WorkingDirectory=/var/www/codebase-research-agent
-EnvironmentFile=/var/www/codebase-research-agent/.env
-ExecStart=/var/www/codebase-research-agent/venv/bin/gunicorn config.wsgi:application -c deployment/gunicorn/gunicorn.conf.py
+WorkingDirectory=/home/ubuntu/codebase_research_agent
+EnvironmentFile=/home/ubuntu/codebase_research_agent/.env
+RuntimeDirectory=gunicorn
+RuntimeDirectoryMode=775
+
+ExecStart=/home/ubuntu/codebase_research_agent/venv/bin/gunicorn \
+    config.wsgi:application \
+    --workers 3 \
+    --bind unix:/run/gunicorn/gunicorn.sock
+
 Restart=always
 
 [Install]
