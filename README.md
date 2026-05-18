@@ -94,8 +94,8 @@ The system then:
 
 ## AI / Agent
 
-- OpenAI
-- Anthropic
+- LangChain & LanGraph
+- OpenAI & Anthropic
 - Tool-calling architecture
 - Source-code search tools
 - Evidence-based answer generation
