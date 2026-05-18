@@ -151,16 +151,11 @@ This allows the research agent to run directly inside the Django request/respons
 ## 1. Clone Repository
 
 ```bash
-git clone YOUR_REPOSITORY_URL
+git clone https://github.com/srikantoraj/codebase_research_agent.git
 cd codebase_research_agent
 ```
 
-Example:
 
-```bash
-git clone https://github.com/your-username/codebase_research_agent.git
-cd codebase_research_agent
-```
 
 ---
 
