@@ -1,56 +1,82 @@
 # DECISIONS.md
 
+# Codebase Research Agent — Design Decisions
+
 ## Architecture Overview
 
-This project separates the API layer, persistence layer, repository operations, agent orchestration, and realtime progress streaming into independent modules.
+This project is a Django + Django REST Framework backend for an AI-powered codebase research agent. The agent accepts a public GitHub repository URL or local path and a natural language question, then explores the codebase using tools before producing a source-grounded answer.
 
-- `apps/repositories` owns repository metadata and clone/update operations.
-- `apps/research` owns research sessions, findings, tool-call logs, and API endpoints.
-- `apps/agent` owns prompts, tool definitions, LangGraph workflow, context management, and final answer generation.
-- `apps/realtime` owns WebSocket consumers and event broadcasting.
+The project is split into focused Django apps:
+
+- `apps.repositories` handles repository metadata, cloning/syncing, local storage paths, branches, commits, and repository reuse.
+- `apps.research` handles research sessions, findings, tool-call logs, final answers, statuses, timestamps, and token metadata.
+- `apps.agent` contains the agent workflow, tool definitions, prompts, and LLM integration.
+- `apps.realtime` handles WebSocket progress events using Django Channels.
+- `apps.common` contains shared utilities.
+
+The main API creates a research session, prepares the repository, runs the agent, stores findings/tool calls, and returns the final answer. WebSocket events are used to show progress during long-running research.
+
+## Agent Design
+
+The agent uses a tool-calling approach instead of sending the full repository to the LLM. This is important because large repositories can easily exceed context limits.
+
+The agent has two main tool groups.
+
+Code exploration tools include:
+
+- `list_files(path)`
+- `search_code(query)`
+- `read_file(path)`
+- `read_around_match(path, line)`
+- `get_file_summary(path)`
+
+Database tools include:
+
+- `save_finding(session_id, file_path, note)`
+- `get_previous_findings(repo_url)`
+- `list_past_sessions(repo_url)`
+- `log_tool_call(...)`
+
+The workflow is:
+
+1. Create or reuse a repository record.
+2. Clone or sync the repository into local storage.
+3. Create a research session.
+4. Generate search terms from the question.
+5. Search relevant source files.
+6. Read selected files or snippets.
+7. Save findings.
+8. Log tool calls.
+9. Generate a final answer.
+10. Persist the final answer and status.
+
+The agent stops using configured limits such as `max_steps`, `max_files_to_read`, and `max_file_chars`. These limits prevent infinite loops, reduce token usage, and keep execution predictable.
 
 ## Database Schema Rationale
 
-The database is designed around a research workflow. A `Repository` can have many `ResearchSession` records. Each session stores the question, final answer, status, token usage, and execution timestamps. The agent writes `ToolCallLog` rows to record what it did and `Finding` rows to persist meaningful evidence found in the codebase. `AgentEvent` records are used both for realtime WebSocket updates and for later review.
+The schema is centered around repository research.
 
-## Agent Workflow
+`Repository` stores the repo URL, canonical URL, owner, name, branch, commit, local path, sync status, last analyzed timestamp, and file count. This avoids cloning the same repository repeatedly and allows future sessions to reuse existing data.
 
-The intended workflow is:
+`ResearchSession` stores one question against one repository. It keeps the question, final answer, status, options, model name, token usage, timestamps, and error message.
 
-1. Create a research session.
-2. Load previous findings for the same repo.
-3. Plan a search strategy.
-4. Call tools such as `list_files`, `search_code`, `read_file`, and `save_finding`.
-5. Stop when enough evidence is collected or when a max-step guard is reached.
-6. Generate a final answer with file/function/line references.
+`Finding` stores useful evidence discovered by the agent, including file path, symbol/function name, line range, note, evidence snippet, confidence, and metadata.
 
-## Context Management
+`ToolCallLog` records each tool call, input/output payload, status, error, step number, and duration. This makes the agent workflow reviewable and helps debugging.
 
-The agent should search first and read only targeted files or line ranges. Large files should be truncated or summarized. File summaries can be cached in the database with content hashes.
+The schema is normalized where relationships matter: one repository has many sessions, and one session has many findings and tool logs. JSON fields are used for flexible tool metadata because different tools return different structures.
 
-## Cost and Latency Trade-offs
+At scale, I would add stronger indexing, semantic search, file chunk tables, and possibly embeddings for faster repeated research.
 
-The first version should use a small number of tool calls and a strict `max_steps` limit. In production, long-running sessions would be moved to Celery or another worker queue.
+## Context, Cost, and Latency
 
-## Realtime Design
+The agent uses a search-first strategy to control context size. It searches the repository first, reads only relevant files/snippets, saves concise findings, and sends selected evidence to the LLM.
 
-Realtime progress is implemented with Django Channels. The agent emits domain events through an `AgentEventPublisher`. Each event is persisted to the database and also broadcast over WebSocket. This means progress can be shown live in a frontend, while the backend still keeps an auditable trail.
+This reduces cost, latency, and irrelevant context. It also improves explainability because the final answer is based on saved findings and file references.
 
-## What I Kept Simple
+The project supports synchronous execution for simple local demos:
 
-- No authentication or multi-user support.
-- No frontend in the initial version.
-- No Docker because the project is structured for traditional Nginx/Gunicorn/Daphne hosting.
-- Minimal tests at the scaffold stage.
-
-## What I Would Improve With More Time
-
-- Add Celery for async research sessions.
-- Add vector search for large repositories.
-- Add more robust AST-based symbol extraction.
-- Add better token accounting and cost reporting.
-- Add richer UI for live agent activity.
-
-## AI Tool Usage
-
-Document here how you used ChatGPT, Claude Code, Cursor, Copilot, or other tools. Be honest about what was AI-generated, what was edited manually, and how you reviewed the output.
+```json
+{
+  "async": false
+}
